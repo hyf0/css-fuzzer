@@ -44,10 +44,10 @@ vp run verify-report-ready
 As of 2026-07-08, `main` was verified against `oxc-project/oxc-css-parser@90911bd` with this command:
 
 ```sh
-vp run verify-report-ready -- --cases-dir ../css-parser-fuzzer-cases/cases --cases-readme ../css-parser-fuzzer-cases/README.md --out-root findings/report-ready-oxc-90911bd --seed 240001 --iterations 20000 --roundtrip-count 3000
+vp run verify-report-ready -- --cases-dir ../css-parser-fuzzer-cases/cases --cases-readme ../css-parser-fuzzer-cases/README.md --out-root findings/report-ready-minimized-240002 --seed 240002 --iterations 20000 --roundtrip-count 3000
 ```
 
-The run fetched the live CSSWG index, selected and downloaded 100 specs with 0 failed downloads, extracted 2867 examples, normalized 1780 examples, covered every selected spec in generator verification, checked 33 minimized case files and 11 OXC README links, ran 20000 fuzz iterations with 0 new findings, checked 3000 lightningcss roundtrip samples with 0 mismatches, checked 3000 Prettier roundtrip samples with 0 mismatches, and found 0 unarchived reports.
+The run used the shortened OXC README cases, fetched the live CSSWG index, selected and downloaded 100 specs with 0 failed downloads, extracted 2867 examples, normalized 1780 examples, covered every selected spec in generator verification, checked 33 minimized case files and 11 OXC README links, ran 20000 fuzz iterations with 0 new findings, checked 3000 lightningcss roundtrip samples with 0 mismatches, checked 3000 Prettier roundtrip samples with 0 mismatches, and found 0 unarchived reports.
 
 ## Residual Risks
 
