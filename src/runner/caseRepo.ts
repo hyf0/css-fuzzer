@@ -155,6 +155,11 @@ export interface SidecarHeadingMismatch {
   readonly missingHeadings: readonly string[];
 }
 
+export interface SidecarContextMismatch {
+  readonly noteFile: string;
+  readonly reason: string;
+}
+
 export interface SidecarTitleIdMismatch {
   readonly file: string;
   readonly noteFile: string;
@@ -182,6 +187,7 @@ export interface CaseRepoVerificationResult extends CaseCoverageDiff {
   readonly orphanCaseNotes: readonly string[];
   readonly sidecarSourceMismatches: readonly SidecarSourceMismatch[];
   readonly sidecarHeadingMismatches: readonly SidecarHeadingMismatch[];
+  readonly sidecarContextMismatches: readonly SidecarContextMismatch[];
   readonly sidecarTitleIdMismatches: readonly SidecarTitleIdMismatch[];
   readonly sidecarRowsMissingParserExpectations: readonly SidecarMissingParserExpectation[];
   readonly sidecarRowsMissingParserMessages: readonly SidecarMissingParserMessage[];
@@ -225,6 +231,10 @@ export async function verifyCaseRepo(
     readmeRoot,
   );
   const sidecarHeadingMismatches = await findSidecarHeadingMismatches(
+    absoluteCaseNoteFiles,
+    readmeRoot,
+  );
+  const sidecarContextMismatches = await findSidecarContextMismatches(
     absoluteCaseNoteFiles,
     readmeRoot,
   );
@@ -273,6 +283,7 @@ export async function verifyCaseRepo(
     ...noteCoverage,
     sidecarSourceMismatches,
     sidecarHeadingMismatches,
+    sidecarContextMismatches,
     sidecarTitleIdMismatches,
     sidecarRowsMissingParserExpectations:
       findSidecarRowsMissingParserExpectations(sidecarExpectations),
@@ -816,6 +827,32 @@ export async function findSidecarHeadingMismatches(
   return mismatches.sort((left, right) => left.noteFile.localeCompare(right.noteFile));
 }
 
+export async function findSidecarContextMismatches(
+  absoluteCaseNoteFiles: readonly string[],
+  readmeRoot: string,
+): Promise<readonly SidecarContextMismatch[]> {
+  const mismatches: SidecarContextMismatch[] = [];
+  for (const noteFile of absoluteCaseNoteFiles) {
+    const noteSource = await readFile(noteFile, "utf8");
+    const hasContextHeading = hasMarkdownHeading(noteSource, "Spec Context");
+    const hasTriageHeading = hasMarkdownHeading(noteSource, "Triage Note");
+    if (!hasContextHeading && !hasTriageHeading) {
+      continue;
+    }
+    if (
+      sectionHasNonEmptyBody(noteSource, "Spec Context") ||
+      sectionHasNonEmptyBody(noteSource, "Triage Note")
+    ) {
+      continue;
+    }
+    mismatches.push({
+      noteFile: toPosixPath(path.relative(readmeRoot, noteFile)),
+      reason: "missing non-empty Spec Context or Triage Note body",
+    });
+  }
+  return mismatches.sort((left, right) => left.noteFile.localeCompare(right.noteFile));
+}
+
 export async function findSidecarTitleIdMismatches(
   absoluteCaseNoteFiles: readonly string[],
   readmeRoot: string,
@@ -964,6 +1001,7 @@ export function caseRepoVerificationPassed(result: CaseRepoVerificationResult): 
     result.orphanCaseNotes.length === 0 &&
     result.sidecarSourceMismatches.length === 0 &&
     result.sidecarHeadingMismatches.length === 0 &&
+    result.sidecarContextMismatches.length === 0 &&
     result.sidecarTitleIdMismatches.length === 0 &&
     result.sidecarRowsMissingParserExpectations.length === 0 &&
     result.sidecarRowsMissingParserMessages.length === 0 &&
@@ -991,7 +1029,7 @@ export function formatCaseRepoVerification(result: CaseRepoVerificationResult): 
       ? ", and are reduction-stable under the configured minimizer"
       : "";
     lines.push(
-      `All case files have sidecar notes with matching CSS reproduction blocks, required headings, README-matching title IDs for listed OXC issue cases, and complete sidecar parser result tables with error-message snippets; every current OXC issue case is covered by a unique README link and ID, README links do not include OXC clean-accept cases, listed cases use filenames matching their README IDs, are listed under matching priority sections, have complete human-readable README parser emoji rows with parser notes, still replay as interesting, match the README parser summary and sidecar parser matrices${minimizationClause}.`,
+      `All case files have sidecar notes with matching CSS reproduction blocks, required headings with explanatory text, README-matching title IDs for listed OXC issue cases, and complete sidecar parser result tables with error-message snippets; every current OXC issue case is covered by a unique README link and ID, README links do not include OXC clean-accept cases, listed cases use filenames matching their README IDs, are listed under matching priority sections, have complete human-readable README parser emoji rows with parser notes, still replay as interesting, match the README parser summary and sidecar parser matrices${minimizationClause}.`,
     );
     return `${lines.join("\n")}\n`;
   }
@@ -1058,6 +1096,13 @@ export function formatCaseRepoVerification(result: CaseRepoVerificationResult): 
     lines.push("", "Sidecar notes missing required headings:");
     for (const item of result.sidecarHeadingMismatches) {
       lines.push(`- ${item.noteFile}: ${item.missingHeadings.join(", ")}`);
+    }
+  }
+
+  if (result.sidecarContextMismatches.length > 0) {
+    lines.push("", "Sidecar notes missing explanatory context text:");
+    for (const item of result.sidecarContextMismatches) {
+      lines.push(`- ${item.noteFile}: ${item.reason}`);
     }
   }
 
@@ -1535,6 +1580,29 @@ function extractSidecarTitleId(markdown: string): string | undefined {
 
 function hasMarkdownHeading(markdown: string, heading: string): boolean {
   return markdown.split(/\r?\n/).some((line) => line.trim() === `## ${heading}`);
+}
+
+function sectionHasNonEmptyBody(markdown: string, heading: string): boolean {
+  let inSection = false;
+  for (const rawLine of markdown.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    const headingMatch = /^(#{1,6})\s+(.+?)\s*$/.exec(line);
+    if (headingMatch !== null) {
+      const level = headingMatch[1]?.length ?? 0;
+      const title = headingMatch[2];
+      if (level === 2 && title === heading) {
+        inSection = true;
+        continue;
+      }
+      if (inSection && level <= 2) {
+        return false;
+      }
+    }
+    if (inSection && line !== "") {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function extractFirstCssFence(markdown: string): string | undefined {

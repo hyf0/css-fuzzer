@@ -26,6 +26,7 @@ import {
   findReadmeRowsMissingParserMessages,
   findReadmeRowsMissingParserExpectations,
   findSidecarHeadingMismatches,
+  findSidecarContextMismatches,
   findSidecarMatrixMismatches,
   findSidecarRowsMissingParserMessages,
   findSidecarRowsMissingParserExpectations,
@@ -304,6 +305,37 @@ a { color: red; }
         {
           noteFile: "bad.md",
           missingHeadings: ["Parser Results", "Spec Context or Triage Note"],
+        },
+      ]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("reports sidecar notes whose context sections have no body", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "css-fuzzer-case-note-"));
+    const goodNote = path.join(dir, "good.md");
+    const emptyContextNote = path.join(dir, "empty-context.md");
+    const noContextHeadingNote = path.join(dir, "no-context-heading.md");
+    try {
+      await writeFile(
+        goodNote,
+        ["# GOOD", "", "## Spec Context", "", "This is current CSS syntax.", ""].join("\n"),
+        "utf8",
+      );
+      await writeFile(
+        emptyContextNote,
+        ["# EMPTY", "", "## Spec Context", "", "## Parser Results", ""].join("\n"),
+        "utf8",
+      );
+      await writeFile(noContextHeadingNote, "# NO-CONTEXT\n", "utf8");
+
+      await expect(
+        findSidecarContextMismatches([goodNote, emptyContextNote, noContextHeadingNote], dir),
+      ).resolves.toEqual([
+        {
+          noteFile: "empty-context.md",
+          reason: "missing non-empty Spec Context or Triage Note body",
         },
       ]);
     } finally {
@@ -916,6 +948,7 @@ a { color: red; }
       orphanCaseNotes: [],
       sidecarSourceMismatches: [],
       sidecarHeadingMismatches: [],
+      sidecarContextMismatches: [],
       sidecarTitleIdMismatches: [],
       sidecarRowsMissingParserExpectations: [],
       sidecarRowsMissingParserMessages: [],
@@ -933,7 +966,7 @@ a { color: red; }
 
     expect(caseRepoVerificationPassed(result)).toBe(true);
     expect(formatCaseRepoVerification(result)).toBe(
-      "Checked 1 CSS case files, 1 sidecar notes, and 1 README case links.\nAll case files have sidecar notes with matching CSS reproduction blocks, required headings, README-matching title IDs for listed OXC issue cases, and complete sidecar parser result tables with error-message snippets; every current OXC issue case is covered by a unique README link and ID, README links do not include OXC clean-accept cases, listed cases use filenames matching their README IDs, are listed under matching priority sections, have complete human-readable README parser emoji rows with parser notes, still replay as interesting, match the README parser summary and sidecar parser matrices.\n",
+      "Checked 1 CSS case files, 1 sidecar notes, and 1 README case links.\nAll case files have sidecar notes with matching CSS reproduction blocks, required headings with explanatory text, README-matching title IDs for listed OXC issue cases, and complete sidecar parser result tables with error-message snippets; every current OXC issue case is covered by a unique README link and ID, README links do not include OXC clean-accept cases, listed cases use filenames matching their README IDs, are listed under matching priority sections, have complete human-readable README parser emoji rows with parser notes, still replay as interesting, match the README parser summary and sidecar parser matrices.\n",
     );
   });
 
@@ -951,6 +984,7 @@ a { color: red; }
       orphanCaseNotes: [],
       sidecarSourceMismatches: [],
       sidecarHeadingMismatches: [],
+      sidecarContextMismatches: [],
       sidecarTitleIdMismatches: [],
       sidecarRowsMissingParserExpectations: [],
       sidecarRowsMissingParserMessages: [],
@@ -984,6 +1018,7 @@ a { color: red; }
       orphanCaseNotes: [],
       sidecarSourceMismatches: [],
       sidecarHeadingMismatches: [],
+      sidecarContextMismatches: [],
       sidecarTitleIdMismatches: [],
       sidecarRowsMissingParserExpectations: [],
       sidecarRowsMissingParserMessages: [],
@@ -1026,6 +1061,7 @@ a { color: red; }
       orphanCaseNotes: [],
       sidecarSourceMismatches: [],
       sidecarHeadingMismatches: [],
+      sidecarContextMismatches: [],
       sidecarTitleIdMismatches: [],
       sidecarRowsMissingParserExpectations: [],
       sidecarRowsMissingParserMessages: [],
@@ -1061,6 +1097,7 @@ a { color: red; }
       orphanCaseNotes: ["cases/high/orphan.md"],
       sidecarSourceMismatches: [],
       sidecarHeadingMismatches: [],
+      sidecarContextMismatches: [],
       sidecarTitleIdMismatches: [],
       sidecarRowsMissingParserExpectations: [],
       sidecarRowsMissingParserMessages: [],
@@ -1102,6 +1139,7 @@ a { color: red; }
         },
       ],
       sidecarHeadingMismatches: [],
+      sidecarContextMismatches: [],
       sidecarTitleIdMismatches: [],
       sidecarRowsMissingParserExpectations: [],
       sidecarRowsMissingParserMessages: [],
@@ -1142,6 +1180,7 @@ a { color: red; }
           missingHeadings: ["Parser Results", "Spec Context or Triage Note"],
         },
       ],
+      sidecarContextMismatches: [],
       sidecarTitleIdMismatches: [],
       sidecarRowsMissingParserExpectations: [],
       sidecarRowsMissingParserMessages: [],
@@ -1163,6 +1202,47 @@ a { color: red; }
     );
   });
 
+  test("formats sidecar context mismatches as verification failures", () => {
+    const result = {
+      caseFiles: ["cases/high/a.css"],
+      caseNoteFiles: ["cases/high/a.md"],
+      readmeLinks: ["cases/high/a.css"],
+      readmeDuplicateLinks: [],
+      readmeDuplicateCaseIds: [],
+      readmeCaseIdPathMismatches: [],
+      missingFromReadme: [],
+      missingOnDisk: [],
+      missingCaseNotes: [],
+      orphanCaseNotes: [],
+      sidecarSourceMismatches: [],
+      sidecarHeadingMismatches: [],
+      sidecarContextMismatches: [
+        {
+          noteFile: "cases/high/a.md",
+          reason: "missing non-empty Spec Context or Triage Note body",
+        },
+      ],
+      sidecarTitleIdMismatches: [],
+      sidecarRowsMissingParserExpectations: [],
+      sidecarRowsMissingParserMessages: [],
+      sidecarMatrixMismatches: [],
+      uninterestingCases: [],
+      readmeLinksWithoutPriority: [],
+      readmePriorityPathMismatches: [],
+      readmeLinksWithoutMatrix: [],
+      readmeRowsMissingParserExpectations: [],
+      readmeRowsMissingParserMessages: [],
+      matrixMismatches: [],
+      minimizationChecked: false,
+      reducibleCases: [],
+    };
+
+    expect(caseRepoVerificationPassed(result)).toBe(false);
+    expect(formatCaseRepoVerification(result)).toContain(
+      "Sidecar notes missing explanatory context text:\n- cases/high/a.md: missing non-empty Spec Context or Triage Note body",
+    );
+  });
+
   test("formats sidecar title ID mismatches as verification failures", () => {
     const result = {
       caseFiles: ["cases/high/a.css"],
@@ -1177,6 +1257,7 @@ a { color: red; }
       orphanCaseNotes: [],
       sidecarSourceMismatches: [],
       sidecarHeadingMismatches: [],
+      sidecarContextMismatches: [],
       sidecarTitleIdMismatches: [
         {
           file: "cases/high/a.css",
@@ -1220,6 +1301,7 @@ a { color: red; }
       orphanCaseNotes: [],
       sidecarSourceMismatches: [],
       sidecarHeadingMismatches: [],
+      sidecarContextMismatches: [],
       sidecarTitleIdMismatches: [],
       sidecarRowsMissingParserExpectations: [
         {
@@ -1261,6 +1343,7 @@ a { color: red; }
       orphanCaseNotes: [],
       sidecarSourceMismatches: [],
       sidecarHeadingMismatches: [],
+      sidecarContextMismatches: [],
       sidecarTitleIdMismatches: [],
       sidecarRowsMissingParserExpectations: [],
       sidecarRowsMissingParserMessages: [
@@ -1303,6 +1386,7 @@ a { color: red; }
       orphanCaseNotes: [],
       sidecarSourceMismatches: [],
       sidecarHeadingMismatches: [],
+      sidecarContextMismatches: [],
       sidecarTitleIdMismatches: [],
       sidecarRowsMissingParserExpectations: [],
       sidecarRowsMissingParserMessages: [],
@@ -1346,6 +1430,7 @@ a { color: red; }
       orphanCaseNotes: [],
       sidecarSourceMismatches: [],
       sidecarHeadingMismatches: [],
+      sidecarContextMismatches: [],
       sidecarTitleIdMismatches: [],
       sidecarRowsMissingParserExpectations: [],
       sidecarRowsMissingParserMessages: [],
@@ -1381,6 +1466,7 @@ a { color: red; }
       orphanCaseNotes: [],
       sidecarSourceMismatches: [],
       sidecarHeadingMismatches: [],
+      sidecarContextMismatches: [],
       sidecarTitleIdMismatches: [],
       sidecarRowsMissingParserExpectations: [],
       sidecarRowsMissingParserMessages: [],
@@ -1422,6 +1508,7 @@ a { color: red; }
       orphanCaseNotes: [],
       sidecarSourceMismatches: [],
       sidecarHeadingMismatches: [],
+      sidecarContextMismatches: [],
       sidecarTitleIdMismatches: [],
       sidecarRowsMissingParserExpectations: [],
       sidecarRowsMissingParserMessages: [],
@@ -1457,6 +1544,7 @@ a { color: red; }
       orphanCaseNotes: [],
       sidecarSourceMismatches: [],
       sidecarHeadingMismatches: [],
+      sidecarContextMismatches: [],
       sidecarTitleIdMismatches: [],
       sidecarRowsMissingParserExpectations: [],
       sidecarRowsMissingParserMessages: [],
@@ -1494,6 +1582,7 @@ a { color: red; }
       orphanCaseNotes: [],
       sidecarSourceMismatches: [],
       sidecarHeadingMismatches: [],
+      sidecarContextMismatches: [],
       sidecarTitleIdMismatches: [],
       sidecarRowsMissingParserExpectations: [],
       sidecarRowsMissingParserMessages: [],
@@ -1535,6 +1624,7 @@ a { color: red; }
       orphanCaseNotes: [],
       sidecarSourceMismatches: [],
       sidecarHeadingMismatches: [],
+      sidecarContextMismatches: [],
       sidecarTitleIdMismatches: [],
       sidecarRowsMissingParserExpectations: [],
       sidecarRowsMissingParserMessages: [],
@@ -1578,6 +1668,7 @@ a { color: red; }
       orphanCaseNotes: [],
       sidecarSourceMismatches: [],
       sidecarHeadingMismatches: [],
+      sidecarContextMismatches: [],
       sidecarTitleIdMismatches: [],
       sidecarRowsMissingParserExpectations: [],
       sidecarRowsMissingParserMessages: [],
@@ -1595,7 +1686,7 @@ a { color: red; }
 
     expect(caseRepoVerificationPassed(result)).toBe(true);
     expect(formatCaseRepoVerification(result)).toBe(
-      "Checked 1 CSS case files, 1 sidecar notes, and 1 README case links.\nAll case files have sidecar notes with matching CSS reproduction blocks, required headings, README-matching title IDs for listed OXC issue cases, and complete sidecar parser result tables with error-message snippets; every current OXC issue case is covered by a unique README link and ID, README links do not include OXC clean-accept cases, listed cases use filenames matching their README IDs, are listed under matching priority sections, have complete human-readable README parser emoji rows with parser notes, still replay as interesting, match the README parser summary and sidecar parser matrices, and are reduction-stable under the configured minimizer.\n",
+      "Checked 1 CSS case files, 1 sidecar notes, and 1 README case links.\nAll case files have sidecar notes with matching CSS reproduction blocks, required headings with explanatory text, README-matching title IDs for listed OXC issue cases, and complete sidecar parser result tables with error-message snippets; every current OXC issue case is covered by a unique README link and ID, README links do not include OXC clean-accept cases, listed cases use filenames matching their README IDs, are listed under matching priority sections, have complete human-readable README parser emoji rows with parser notes, still replay as interesting, match the README parser summary and sidecar parser matrices, and are reduction-stable under the configured minimizer.\n",
     );
   });
 });
