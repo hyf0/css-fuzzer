@@ -58,11 +58,13 @@ export interface UninterestingCase {
 export interface ReadmeParserExpectation {
   readonly status: ParserStatus;
   readonly messageSnippet?: string;
+  readonly summaryOnly?: boolean;
 }
 
 export interface ReadmeCaseExpectation {
   readonly file: string;
   readonly parsers: ReadonlyMap<ParserName, ReadmeParserExpectation>;
+  readonly parserNotes?: string;
 }
 
 export interface SidecarCaseExpectation {
@@ -112,6 +114,10 @@ export interface ReadmeMissingParserMessage {
   readonly file: string;
   readonly parser: ParserName;
   readonly status: ParserStatus;
+}
+
+export interface ReadmeMissingParserNote {
+  readonly file: string;
 }
 
 export interface SidecarMissingParserMessage {
@@ -183,9 +189,11 @@ export interface CaseRepoVerificationResult extends CaseCoverageDiff {
   readonly uninterestingCases: readonly UninterestingCase[];
   readonly readmeLinksWithoutPriority: readonly string[];
   readonly readmePriorityPathMismatches: readonly ReadmePriorityPathMismatch[];
+  readonly readmeLinksWithoutOxcIssue?: readonly string[];
   readonly readmeLinksWithoutMatrix: readonly string[];
   readonly readmeRowsMissingParserExpectations: readonly ReadmeMissingParserExpectation[];
   readonly readmeRowsMissingParserMessages: readonly ReadmeMissingParserMessage[];
+  readonly readmeRowsMissingParserNotes?: readonly ReadmeMissingParserNote[];
   readonly matrixMismatches: readonly ReadmeMatrixMismatch[];
   readonly minimizationChecked: boolean;
   readonly reducibleCases: readonly ReducibleCase[];
@@ -210,7 +218,6 @@ export async function verifyCaseRepo(
   const readmeDuplicateCaseIds = findDuplicateReadmeCaseIds(readme);
   const readmeCasePriorities = extractReadmeCasePriorities(readme);
   const readmeExpectations = extractReadmeCaseExpectations(readme);
-  const coverage = diffCaseCoverage(caseFiles, readmeLinks);
   const noteCoverage = diffCaseNoteCoverage(caseFiles, caseNoteFiles);
   const absoluteCaseNoteSet = new Set(absoluteCaseNoteFiles);
   const sidecarSourceMismatches = await findSidecarSourceMismatches(
@@ -220,11 +227,6 @@ export async function verifyCaseRepo(
   const sidecarHeadingMismatches = await findSidecarHeadingMismatches(
     absoluteCaseNoteFiles,
     readmeRoot,
-  );
-  const sidecarTitleIdMismatches = await findSidecarTitleIdMismatches(
-    absoluteCaseNoteFiles,
-    readmeRoot,
-    readmeCaseIds,
   );
   const sidecarExpectations = await extractSidecarCaseExpectations(
     absoluteCaseNoteFiles,
@@ -238,6 +240,18 @@ export async function verifyCaseRepo(
     ...row,
     file: toPosixPath(path.relative(readmeRoot, row.file)),
   }));
+  const readmeOxcIssueFiles = findOxcIssueCaseFiles(relativeRows);
+  const coverage = diffCaseCoverage(readmeOxcIssueFiles, readmeLinks, caseFiles);
+  const readmeLinkSet = new Set(readmeLinks);
+  const readmeLinkedCaseNoteFiles = absoluteCaseNoteFiles.filter((noteFile) => {
+    const caseFile = toPosixPath(path.relative(readmeRoot, caseFilePathForCaseNoteFile(noteFile)));
+    return readmeLinkSet.has(caseFile);
+  });
+  const sidecarTitleIdMismatches = await findSidecarTitleIdMismatches(
+    readmeLinkedCaseNoteFiles,
+    readmeRoot,
+    readmeCaseIds,
+  );
   const reducibleCases =
     options.checkMinimized === true
       ? await findReducibleReplayRows(relativeRows, {
@@ -267,10 +281,16 @@ export async function verifyCaseRepo(
     uninterestingCases: findUninterestingReplayRows(relativeRows, options.syntax),
     readmeLinksWithoutPriority: findReadmeLinksWithoutPriority(readmeCasePriorities),
     readmePriorityPathMismatches: findReadmePriorityPathMismatches(readmeCasePriorities),
+    readmeLinksWithoutOxcIssue: findReadmeLinksWithoutOxcIssue(
+      readmeLinks,
+      readmeOxcIssueFiles,
+      caseFiles,
+    ),
     readmeLinksWithoutMatrix: findReadmeLinksWithoutMatrix(readmeLinks, readmeExpectations),
     readmeRowsMissingParserExpectations:
       findReadmeRowsMissingParserExpectations(readmeExpectations),
     readmeRowsMissingParserMessages: findReadmeRowsMissingParserMessages(readmeExpectations),
+    readmeRowsMissingParserNotes: findReadmeRowsMissingParserNotes(readmeExpectations),
     matrixMismatches: findReadmeMatrixMismatches(readmeExpectations, relativeRows),
     minimizationChecked: options.checkMinimized === true,
     reducibleCases,
@@ -412,19 +432,42 @@ export function extractReadmeCasePriorities(readme: string): readonly ReadmeCase
 }
 
 export function diffCaseCoverage(
-  caseFiles: readonly string[],
+  expectedReadmeCaseFiles: readonly string[],
   readmeLinks: readonly string[],
+  availableCaseFiles: readonly string[] = expectedReadmeCaseFiles,
 ): CaseCoverageDiff {
-  const fileSet = new Set(caseFiles);
+  const fileSet = new Set(availableCaseFiles);
   const linkSet = new Set(readmeLinks);
   return {
-    missingFromReadme: caseFiles
+    missingFromReadme: expectedReadmeCaseFiles
       .filter((file) => !linkSet.has(file))
       .sort((a, b) => a.localeCompare(b)),
     missingOnDisk: readmeLinks
       .filter((link) => !fileSet.has(link))
       .sort((a, b) => a.localeCompare(b)),
   };
+}
+
+export function findOxcIssueCaseFiles(rows: readonly ReplayRow[]): readonly string[] {
+  return rows
+    .filter((row) => {
+      const oxcResult = row.results.find((result) => result.parser === "oxc-css-parser");
+      return oxcResult !== undefined && oxcResult.status !== "accepted";
+    })
+    .map((row) => row.file)
+    .sort((left, right) => left.localeCompare(right));
+}
+
+export function findReadmeLinksWithoutOxcIssue(
+  readmeLinks: readonly string[],
+  oxcIssueCaseFiles: readonly string[],
+  availableCaseFiles: readonly string[],
+): readonly string[] {
+  const oxcIssueCaseFileSet = new Set(oxcIssueCaseFiles);
+  const availableCaseFileSet = new Set(availableCaseFiles);
+  return readmeLinks
+    .filter((file) => availableCaseFileSet.has(file) && !oxcIssueCaseFileSet.has(file))
+    .sort((left, right) => left.localeCompare(right));
 }
 
 export function diffCaseNoteCoverage(
@@ -472,12 +515,14 @@ export function findReadmePriorityPathMismatches(
 
 export function extractReadmeCaseExpectations(readme: string): readonly ReadmeCaseExpectation[] {
   let parserColumns: ReadonlyMap<ParserName, number> | undefined;
+  let parserNotesColumn: number | undefined;
   const expectations: ReadmeCaseExpectation[] = [];
 
   for (const rawLine of readme.split(/\r?\n/)) {
     const line = rawLine.trim();
     if (!line.startsWith("|") || !line.endsWith("|")) {
       parserColumns = undefined;
+      parserNotesColumn = undefined;
       continue;
     }
 
@@ -486,9 +531,10 @@ export function extractReadmeCaseExpectations(readme: string): readonly ReadmeCa
       continue;
     }
 
-    const headerColumns = parserColumnsFromHeader(cells);
+    const headerColumns = readmeTableColumnsFromHeader(cells);
     if (headerColumns !== undefined) {
-      parserColumns = headerColumns;
+      parserColumns = headerColumns.parserColumns;
+      parserNotesColumn = headerColumns.parserNotesColumn;
       continue;
     }
 
@@ -509,7 +555,13 @@ export function extractReadmeCaseExpectations(readme: string): readonly ReadmeCa
         parsers.set(parser, parseReadmeParserExpectation(cell));
       }
     }
-    expectations.push({ file, parsers });
+    const parserNotes =
+      parserNotesColumn === undefined ? undefined : stripMarkdown(cells[parserNotesColumn] ?? "");
+    expectations.push({
+      file,
+      parsers,
+      ...(parserNotes === undefined ? {} : { parserNotes: parserNotes.trim() }),
+    });
   }
 
   return expectations.sort((a, b) => a.file.localeCompare(b.file));
@@ -559,6 +611,20 @@ export function findReadmeRowsMissingParserMessages(
         left.file.localeCompare(right.file) ||
         parserNames.indexOf(left.parser) - parserNames.indexOf(right.parser),
     );
+}
+
+export function findReadmeRowsMissingParserNotes(
+  expectations: readonly ReadmeCaseExpectation[],
+): readonly ReadmeMissingParserNote[] {
+  return expectations
+    .filter((expectation) => {
+      const hasFailingEmoji = [...expectation.parsers.values()].some(
+        (parser) => parser.summaryOnly === true && parser.status !== "accepted",
+      );
+      return hasFailingEmoji && (expectation.parserNotes ?? "") === "";
+    })
+    .map((expectation) => ({ file: expectation.file }))
+    .sort((left, right) => left.file.localeCompare(right.file));
 }
 
 export function findReadmeMatrixMismatches(
@@ -886,6 +952,8 @@ export async function findReducibleReplayRows(
 }
 
 export function caseRepoVerificationPassed(result: CaseRepoVerificationResult): boolean {
+  const readmeLinksWithoutOxcIssue = result.readmeLinksWithoutOxcIssue ?? [];
+  const readmeRowsMissingParserNotes = result.readmeRowsMissingParserNotes ?? [];
   return (
     result.missingFromReadme.length === 0 &&
     result.missingOnDisk.length === 0 &&
@@ -903,9 +971,11 @@ export function caseRepoVerificationPassed(result: CaseRepoVerificationResult): 
     result.uninterestingCases.length === 0 &&
     result.readmeLinksWithoutPriority.length === 0 &&
     result.readmePriorityPathMismatches.length === 0 &&
+    readmeLinksWithoutOxcIssue.length === 0 &&
     result.readmeLinksWithoutMatrix.length === 0 &&
     result.readmeRowsMissingParserExpectations.length === 0 &&
     result.readmeRowsMissingParserMessages.length === 0 &&
+    readmeRowsMissingParserNotes.length === 0 &&
     result.matrixMismatches.length === 0 &&
     result.reducibleCases.length === 0
   );
@@ -921,13 +991,13 @@ export function formatCaseRepoVerification(result: CaseRepoVerificationResult): 
       ? ", and are reduction-stable under the configured minimizer"
       : "";
     lines.push(
-      `All case files have sidecar notes with matching CSS reproduction blocks, required headings, README-matching title IDs, and complete parser result tables with error-message snippets, are covered by unique README links and IDs, use case filenames matching their README IDs, are listed under matching priority sections, have complete README parser matrix rows with error-message snippets, still replay as interesting, match the README and sidecar parser matrices${minimizationClause}.`,
+      `All case files have sidecar notes with matching CSS reproduction blocks, required headings, README-matching title IDs for listed OXC issue cases, and complete sidecar parser result tables with error-message snippets; every current OXC issue case is covered by a unique README link and ID, README links do not include OXC clean-accept cases, listed cases use filenames matching their README IDs, are listed under matching priority sections, have complete human-readable README parser emoji rows with parser notes, still replay as interesting, match the README parser summary and sidecar parser matrices${minimizationClause}.`,
     );
     return `${lines.join("\n")}\n`;
   }
 
   if (result.missingFromReadme.length > 0) {
-    lines.push("", "Missing from README:");
+    lines.push("", "OXC issue cases missing from README:");
     for (const file of result.missingFromReadme) {
       lines.push(`- ${file}`);
     }
@@ -1047,29 +1117,45 @@ export function formatCaseRepoVerification(result: CaseRepoVerificationResult): 
     }
   }
 
+  const readmeLinksWithoutOxcIssue = result.readmeLinksWithoutOxcIssue ?? [];
+  if (readmeLinksWithoutOxcIssue.length > 0) {
+    lines.push("", "README links for cases where OXC cleanly accepts:");
+    for (const file of readmeLinksWithoutOxcIssue) {
+      lines.push(`- ${file}`);
+    }
+  }
+
   if (result.readmeLinksWithoutMatrix.length > 0) {
-    lines.push("", "README case links without parser matrix rows:");
+    lines.push("", "README case links without parser emoji rows:");
     for (const file of result.readmeLinksWithoutMatrix) {
       lines.push(`- ${file}`);
     }
   }
 
   if (result.readmeRowsMissingParserExpectations.length > 0) {
-    lines.push("", "README parser matrix rows missing parser expectations:");
+    lines.push("", "README parser emoji rows missing parser expectations:");
     for (const item of result.readmeRowsMissingParserExpectations) {
       lines.push(`- ${item.file}: ${item.parser}`);
     }
   }
 
   if (result.readmeRowsMissingParserMessages.length > 0) {
-    lines.push("", "README parser matrix rows missing error-message snippets:");
+    lines.push("", "README parser matrix rows missing inline error-message snippets:");
     for (const item of result.readmeRowsMissingParserMessages) {
       lines.push(`- ${item.file}: ${item.parser} ${item.status}`);
     }
   }
 
+  const readmeRowsMissingParserNotes = result.readmeRowsMissingParserNotes ?? [];
+  if (readmeRowsMissingParserNotes.length > 0) {
+    lines.push("", "README parser emoji rows missing parser notes:");
+    for (const item of readmeRowsMissingParserNotes) {
+      lines.push(`- ${item.file}`);
+    }
+  }
+
   if (result.matrixMismatches.length > 0) {
-    lines.push("", "README parser matrix mismatches:");
+    lines.push("", "README parser emoji summary mismatches:");
     for (const item of result.matrixMismatches) {
       lines.push(`- ${item.file} ${item.parser}: expected ${item.expected}; actual ${item.actual}`);
     }
@@ -1150,23 +1236,37 @@ function isSeparatorRow(cells: readonly string[]): boolean {
   return cells.every((cell) => /^:?-{3,}:?$/.test(cell.trim()));
 }
 
-function parserColumnsFromHeader(
-  cells: readonly string[],
-): ReadonlyMap<ParserName, number> | undefined {
-  const columns = new Map<ParserName, number>();
+function readmeTableColumnsFromHeader(cells: readonly string[]):
+  | {
+      readonly parserColumns: ReadonlyMap<ParserName, number>;
+      readonly parserNotesColumn?: number;
+    }
+  | undefined {
+  const parserColumns = new Map<ParserName, number>();
+  let parserNotesColumn: number | undefined;
   for (let index = 0; index < cells.length; index += 1) {
-    const label = stripMarkdown(cells[index] ?? "").toLowerCase();
+    const label = stripMarkdown(cells[index] ?? "")
+      .trim()
+      .toLowerCase();
     if (label === "postcss") {
-      columns.set("postcss", index);
+      parserColumns.set("postcss", index);
     } else if (label === "prettier css parser") {
-      columns.set("prettier-css", index);
+      parserColumns.set("prettier-css", index);
     } else if (label === "lightningcss") {
-      columns.set("lightningcss", index);
+      parserColumns.set("lightningcss", index);
     } else if (label === "oxc-css-parser") {
-      columns.set("oxc-css-parser", index);
+      parserColumns.set("oxc-css-parser", index);
+    } else if (label === "parser notes" || label === "notes") {
+      parserNotesColumn = index;
     }
   }
-  return columns.size === parserNames.length ? columns : undefined;
+  if (parserColumns.size !== parserNames.length) {
+    return undefined;
+  }
+  return {
+    parserColumns,
+    ...(parserNotesColumn === undefined ? {} : { parserNotesColumn }),
+  };
 }
 
 function sidecarParserTableColumnsFromHeader(
@@ -1295,6 +1395,12 @@ function parseCasePriority(heading: string): CasePriority | undefined {
 function parseReadmeParserExpectation(cell: string): ReadmeParserExpectation {
   const normalized = stripMarkdown(cell).trim();
   const lower = normalized.toLowerCase();
+  if (normalized === "✅") {
+    return { status: "accepted", summaryOnly: true };
+  }
+  if (normalized === "❌") {
+    return { status: "rejected", summaryOnly: true };
+  }
   if (lower === "accepts") {
     return { status: "accepted" };
   }
@@ -1328,6 +1434,11 @@ function messageSnippetFromCell(
 }
 
 function parserExpectationMatches(expected: ReadmeParserExpectation, actual: ParseResult): boolean {
+  if (expected.summaryOnly === true) {
+    return expected.status === "accepted"
+      ? actual.status === "accepted"
+      : actual.status !== "accepted";
+  }
   if (expected.status !== actual.status) {
     return false;
   }
@@ -1338,6 +1449,9 @@ function parserExpectationMatches(expected: ReadmeParserExpectation, actual: Par
 }
 
 function parserStatusRequiresMessage(expected: ReadmeParserExpectation): boolean {
+  if (expected.summaryOnly === true) {
+    return false;
+  }
   return (
     expected.messageSnippet === undefined &&
     (expected.status === "accepted_with_errors" ||
@@ -1365,6 +1479,9 @@ function messageMatches(expectedSnippet: string, actualMessage: string): boolean
 }
 
 function formatExpectedParserExpectation(expectation: ReadmeParserExpectation): string {
+  if (expectation.summaryOnly === true) {
+    return expectation.status === "accepted" ? "✅" : "❌";
+  }
   return expectation.messageSnippet === undefined
     ? expectation.status
     : `${expectation.status}: ${expectation.messageSnippet}`;

@@ -14,12 +14,15 @@ import {
   extractSidecarCaseExpectations,
   findDuplicateReadmeCaseIds,
   findDuplicateReadmeCaseLinks,
+  findOxcIssueCaseFiles,
   findReducibleReplayRows,
   findReadmeCaseIdPathMismatches,
   findReadmeLinksWithoutPriority,
+  findReadmeLinksWithoutOxcIssue,
   findReadmeLinksWithoutMatrix,
   findReadmeMatrixMismatches,
   findReadmePriorityPathMismatches,
+  findReadmeRowsMissingParserNotes,
   findReadmeRowsMissingParserMessages,
   findReadmeRowsMissingParserExpectations,
   findSidecarHeadingMismatches,
@@ -158,6 +161,59 @@ describe("case repo verification", () => {
       missingFromReadme: ["cases/medium/b.css"],
       missingOnDisk: ["cases/low/c.css"],
     });
+  });
+
+  test("derives README coverage from cases where OXC does not cleanly accept", () => {
+    const oxcIssueCaseFiles = findOxcIssueCaseFiles([
+      {
+        file: "cases/high/accept.css",
+        source: "a{}",
+        results: [
+          { parser: "postcss", status: "accepted", durationMs: 1 },
+          { parser: "oxc-css-parser", status: "accepted", durationMs: 1 },
+        ],
+      },
+      {
+        file: "cases/high/reject.css",
+        source: "a{}",
+        results: [
+          { parser: "postcss", status: "accepted", durationMs: 1 },
+          { parser: "oxc-css-parser", status: "rejected", durationMs: 1, message: "bad" },
+        ],
+      },
+      {
+        file: "cases/high/error.css",
+        source: "a{}",
+        results: [
+          { parser: "postcss", status: "accepted", durationMs: 1 },
+          {
+            parser: "oxc-css-parser",
+            status: "accepted_with_errors",
+            durationMs: 1,
+            message: "recoverable",
+          },
+        ],
+      },
+    ]);
+
+    expect(oxcIssueCaseFiles).toEqual(["cases/high/error.css", "cases/high/reject.css"]);
+    expect(
+      diffCaseCoverage(
+        oxcIssueCaseFiles,
+        ["cases/high/accept.css", "cases/high/reject.css"],
+        ["cases/high/accept.css", "cases/high/error.css", "cases/high/reject.css"],
+      ),
+    ).toEqual({
+      missingFromReadme: ["cases/high/error.css"],
+      missingOnDisk: [],
+    });
+    expect(
+      findReadmeLinksWithoutOxcIssue(
+        ["cases/high/accept.css", "cases/high/reject.css", "cases/missing.css"],
+        oxcIssueCaseFiles,
+        ["cases/high/accept.css", "cases/high/error.css", "cases/high/reject.css"],
+      ),
+    ).toEqual(["cases/high/accept.css"]);
   });
 
   test("reports missing and orphaned case sidecar notes", () => {
@@ -551,6 +607,48 @@ a { color: red; }
     expect(findReadmeRowsMissingParserMessages(expectations)).toEqual([]);
   });
 
+  test("extracts human-readable README parser emoji summaries", () => {
+    const expectations = extractReadmeCaseExpectations(`
+| ID | Area | Minimal case | Why it matters | postcss | prettier CSS parser | lightningcss | oxc-css-parser | Parser notes |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| OXC-COLOR-001 | Color | [\`cases/high/b.css\`](./cases/high/b.css) | Recoverable parser error. | ✅ | ✅ | ✅ | ❌ | OXC accepts with recoverable error: \`dashed identifier is expected\`. |
+`);
+
+    expect(expectations).toHaveLength(1);
+    expect(expectations[0]?.parsers.get("postcss")).toEqual({
+      status: "accepted",
+      summaryOnly: true,
+    });
+    expect(expectations[0]?.parsers.get("oxc-css-parser")).toEqual({
+      status: "rejected",
+      summaryOnly: true,
+    });
+    expect(expectations[0]?.parserNotes).toBe(
+      "OXC accepts with recoverable error: dashed identifier is expected.",
+    );
+    expect(findReadmeRowsMissingParserMessages(expectations)).toEqual([]);
+    expect(findReadmeRowsMissingParserNotes(expectations)).toEqual([]);
+    expect(
+      findReadmeMatrixMismatches(expectations, [
+        {
+          file: "cases/high/b.css",
+          source: "@color-profile --x {}",
+          results: [
+            { parser: "postcss", status: "accepted", durationMs: 1 },
+            { parser: "prettier-css", status: "accepted", durationMs: 1 },
+            { parser: "lightningcss", status: "accepted", durationMs: 1 },
+            {
+              parser: "oxc-css-parser",
+              status: "accepted_with_errors",
+              durationMs: 1,
+              message: "dashed identifier is expected",
+            },
+          ],
+        },
+      ]),
+    ).toEqual([]);
+  });
+
   test("extracts README parser expectations from double-backtick code spans", () => {
     const expectations = extractReadmeCaseExpectations(`
 | ID | Area | Minimal case | Why it matters | postcss | prettier CSS parser | lightningcss | oxc-css-parser |
@@ -595,6 +693,16 @@ a { color: red; }
       { file: "cases/high/a.css", parser: "lightningcss", status: "rejected" },
       { file: "cases/high/a.css", parser: "oxc-css-parser", status: "accepted_with_errors" },
     ]);
+  });
+
+  test("flags README parser emoji rows with missing parser notes", () => {
+    const expectations = extractReadmeCaseExpectations(`
+| ID | Area | Minimal case | Why it matters | postcss | prettier CSS parser | lightningcss | oxc-css-parser | Parser notes |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| CASE | Area | [\`cases/high/a.css\`](./cases/high/a.css) | Reason. | ✅ | ✅ | ✅ | ❌ | |
+`);
+
+    expect(findReadmeRowsMissingParserNotes(expectations)).toEqual([{ file: "cases/high/a.css" }]);
   });
 
   test("matches README parser matrix against replay rows", () => {
@@ -825,7 +933,7 @@ a { color: red; }
 
     expect(caseRepoVerificationPassed(result)).toBe(true);
     expect(formatCaseRepoVerification(result)).toBe(
-      "Checked 1 CSS case files, 1 sidecar notes, and 1 README case links.\nAll case files have sidecar notes with matching CSS reproduction blocks, required headings, README-matching title IDs, and complete parser result tables with error-message snippets, are covered by unique README links and IDs, use case filenames matching their README IDs, are listed under matching priority sections, have complete README parser matrix rows with error-message snippets, still replay as interesting, match the README and sidecar parser matrices.\n",
+      "Checked 1 CSS case files, 1 sidecar notes, and 1 README case links.\nAll case files have sidecar notes with matching CSS reproduction blocks, required headings, README-matching title IDs for listed OXC issue cases, and complete sidecar parser result tables with error-message snippets; every current OXC issue case is covered by a unique README link and ID, README links do not include OXC clean-accept cases, listed cases use filenames matching their README IDs, are listed under matching priority sections, have complete human-readable README parser emoji rows with parser notes, still replay as interesting, match the README parser summary and sidecar parser matrices.\n",
     );
   });
 
@@ -1331,7 +1439,7 @@ a { color: red; }
 
     expect(caseRepoVerificationPassed(result)).toBe(false);
     expect(formatCaseRepoVerification(result)).toContain(
-      "README case links without parser matrix rows:",
+      "README case links without parser emoji rows:",
     );
   });
 
@@ -1368,7 +1476,7 @@ a { color: red; }
 
     expect(caseRepoVerificationPassed(result)).toBe(false);
     expect(formatCaseRepoVerification(result)).toContain(
-      "README parser matrix rows missing parser expectations:",
+      "README parser emoji rows missing parser expectations:",
     );
   });
 
@@ -1409,7 +1517,7 @@ a { color: red; }
 
     expect(caseRepoVerificationPassed(result)).toBe(false);
     expect(formatCaseRepoVerification(result)).toContain(
-      "README parser matrix rows missing error-message snippets:\n- cases/high/a.css: oxc-css-parser rejected",
+      "README parser matrix rows missing inline error-message snippets:\n- cases/high/a.css: oxc-css-parser rejected",
     );
   });
 
@@ -1487,7 +1595,7 @@ a { color: red; }
 
     expect(caseRepoVerificationPassed(result)).toBe(true);
     expect(formatCaseRepoVerification(result)).toBe(
-      "Checked 1 CSS case files, 1 sidecar notes, and 1 README case links.\nAll case files have sidecar notes with matching CSS reproduction blocks, required headings, README-matching title IDs, and complete parser result tables with error-message snippets, are covered by unique README links and IDs, use case filenames matching their README IDs, are listed under matching priority sections, have complete README parser matrix rows with error-message snippets, still replay as interesting, match the README and sidecar parser matrices, and are reduction-stable under the configured minimizer.\n",
+      "Checked 1 CSS case files, 1 sidecar notes, and 1 README case links.\nAll case files have sidecar notes with matching CSS reproduction blocks, required headings, README-matching title IDs for listed OXC issue cases, and complete sidecar parser result tables with error-message snippets; every current OXC issue case is covered by a unique README link and ID, README links do not include OXC clean-accept cases, listed cases use filenames matching their README IDs, are listed under matching priority sections, have complete human-readable README parser emoji rows with parser notes, still replay as interesting, match the README parser summary and sidecar parser matrices, and are reduction-stable under the configured minimizer.\n",
     );
   });
 });
