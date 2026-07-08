@@ -39,6 +39,16 @@ vp run verify-report-ready
 
 `verify-report-ready` expands to the full gate set: `check`, `test`, `build`, OXC driver build, live spec fetch, spec corpus verification, selected-spec generator coverage, minimized cases verification, one minimized fuzz campaign, lightningcss and Prettier roundtrip oracles, and `verify-findings-known` for every output directory. It writes fresh ignored output under `findings/report-ready-<timestamp>/` by default. A zero-finding campaign is still evidence only when its summary is written and `verify-findings-known` passes.
 
+## Latest Verified Run
+
+As of 2026-07-08, `main` was verified against `oxc-project/oxc-css-parser@90911bd` with this command:
+
+```sh
+vp run verify-report-ready -- --cases-dir ../css-parser-fuzzer-cases/cases --cases-readme ../css-parser-fuzzer-cases/README.md --out-root findings/report-ready-oxc-90911bd --seed 240001 --iterations 20000 --roundtrip-count 3000
+```
+
+The run fetched the live CSSWG index, selected and downloaded 100 specs with 0 failed downloads, extracted 2867 examples, normalized 1780 examples, covered every selected spec in generator verification, checked 33 minimized case files and 11 OXC README links, ran 20000 fuzz iterations with 0 new findings, checked 3000 lightningcss roundtrip samples with 0 mismatches, checked 3000 Prettier roundtrip samples with 0 mismatches, and found 0 unarchived reports.
+
 ## Residual Risks
 
 - Differential fuzzing cannot prove that every CSS parser bug has been found. It can only provide campaign evidence under the current generator, corpus, parser versions, timeout, and known-case set.
