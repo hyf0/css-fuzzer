@@ -1,0 +1,6 @@
+AGENTS.md
+data/
+dist/
+findings/
+node_modules/
+tools/oxc-css-parser-driver/target/

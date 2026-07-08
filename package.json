@@ -1,0 +1,46 @@
+{
+  "name": "css-fuzzer",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Strongly typed TypeScript differential fuzzer for modern CSS parser behavior.",
+  "bin": {
+    "css-fuzzer": "dist/css-fuzzer.mjs"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "vp build",
+    "check": "vp check",
+    "test": "vp test",
+    "dev": "vp exec tsx src/cli.ts",
+    "generate": "vp exec tsx src/cli.ts generate",
+    "fuzz": "vp exec tsx src/cli.ts run",
+    "fetch-specs": "vp exec tsx src/cli.ts fetch-specs",
+    "verify-spec-corpus": "vp exec tsx src/cli.ts verify-spec-corpus",
+    "verify-generator-coverage": "vp exec tsx src/cli.ts verify-generator-coverage",
+    "verify-findings-known": "vp exec tsx src/cli.ts verify-findings-known",
+    "verify-lightning-roundtrip": "vp exec tsx src/cli.ts verify-lightning-roundtrip",
+    "verify-prettier-roundtrip": "vp exec tsx src/cli.ts verify-prettier-roundtrip",
+    "bench-adapters": "vp exec tsx src/cli.ts bench-adapters",
+    "replay": "vp exec tsx src/cli.ts replay",
+    "verify-cases": "vp exec tsx src/cli.ts verify-cases",
+    "reduce": "vp exec tsx src/cli.ts reduce",
+    "build:oxc-driver": "cargo build --release --manifest-path tools/oxc-css-parser-driver/Cargo.toml"
+  },
+  "dependencies": {
+    "cheerio": "latest",
+    "lightningcss": "latest",
+    "postcss": "latest",
+    "prettier": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "tsx": "latest",
+    "typescript": "latest",
+    "vite-plus": "latest",
+    "vitest": "latest"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "packageManager": "pnpm@11.8.0"
+}

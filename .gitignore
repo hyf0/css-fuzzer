@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.vite/
+.turbo/
+coverage/
+
+findings/
+data/specs/raw/
+data/specs/csswg-index.json
+data/specs/examples.json
+
+tools/oxc-css-parser-driver/target/
