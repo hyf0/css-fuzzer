@@ -43,9 +43,11 @@ describe("case repo verification", () => {
       extractReadmeCaseLinks(`
 | A | [\`cases/high/a.css\`](./cases/high/a.css) |
 | B | [label](cases/medium/b.css#notes) |
+| C | [label](https://github.com/hyf0/css-parser-fuzzer-cases/blob/main/cases/low/c.css) |
+| D | [label](https://raw.githubusercontent.com/hyf0/css-parser-fuzzer-cases/main/cases/high/d.css#notes) |
 | External | [skip](https://example.com/not-a-case.css) |
 `),
-    ).toEqual(["cases/high/a.css", "cases/medium/b.css"]);
+    ).toEqual(["cases/high/a.css", "cases/high/d.css", "cases/low/c.css", "cases/medium/b.css"]);
   });
 
   test("finds duplicate README case links", () => {

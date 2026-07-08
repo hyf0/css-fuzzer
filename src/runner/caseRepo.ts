@@ -1657,11 +1657,48 @@ function normalizeCaseIdForPath(id: string): string {
 
 function normalizeReadmeCaseTarget(target: string): string | undefined {
   const withoutFragment = target.split("#")[0] ?? "";
-  const normalized = withoutFragment.replaceAll("\\", "/").replace(/^\.\//, "");
+  const normalized =
+    normalizeReadmeGithubCaseTarget(withoutFragment) ??
+    withoutFragment.replaceAll("\\", "/").replace(/^\.\//, "");
   if (!normalized.startsWith("cases/") || !normalized.endsWith(".css")) {
     return undefined;
   }
   return normalized;
+}
+
+function normalizeReadmeGithubCaseTarget(target: string): string | undefined {
+  let url: URL;
+  try {
+    url = new URL(target);
+  } catch {
+    return undefined;
+  }
+
+  const pathname = url.pathname.replaceAll("\\", "/");
+  if (url.hostname === "github.com") {
+    const repoPrefix = "/hyf0/css-parser-fuzzer-cases/";
+    if (!pathname.startsWith(repoPrefix)) {
+      return undefined;
+    }
+    const segments = pathname.slice(repoPrefix.length).split("/");
+    if (segments[0] !== "blob" && segments[0] !== "raw") {
+      return undefined;
+    }
+    const casesIndex = segments.indexOf("cases");
+    return casesIndex >= 2 ? segments.slice(casesIndex).join("/") : undefined;
+  }
+
+  if (url.hostname === "raw.githubusercontent.com") {
+    const repoPrefix = "/hyf0/css-parser-fuzzer-cases/";
+    if (!pathname.startsWith(repoPrefix)) {
+      return undefined;
+    }
+    const segments = pathname.slice(repoPrefix.length).split("/");
+    const casesIndex = segments.indexOf("cases");
+    return casesIndex >= 1 ? segments.slice(casesIndex).join("/") : undefined;
+  }
+
+  return undefined;
 }
 
 function toPosixPath(file: string): string {
