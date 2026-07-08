@@ -20,6 +20,7 @@ vp run verify-generator-coverage
 vp run verify-generator-coverage -- --require-selected-specs
 vp run verify-lightning-roundtrip -- --known-dir ../css-parser-fuzzer-cases/cases --out findings/lightning-roundtrip --minimize
 vp run verify-prettier-roundtrip -- --known-dir ../css-parser-fuzzer-cases/cases --out findings/prettier-roundtrip --minimize
+vp run verify-report-ready
 vp check
 vp test
 ```
@@ -43,6 +44,7 @@ vp run verify-generator-coverage
 vp run verify-generator-coverage -- --require-selected-specs
 vp run verify-lightning-roundtrip -- --known-dir ../css-parser-fuzzer-cases/cases --out findings/lightning-roundtrip --minimize
 vp run verify-prettier-roundtrip -- --known-dir ../css-parser-fuzzer-cases/cases --out findings/prettier-roundtrip --minimize
+vp run verify-report-ready
 vp run generate -- --seed 1 --count 5
 vp run fuzz -- --seed 1 --iterations 100 --known-dir ../css-parser-fuzzer-cases/cases --minimize
 vp run verify-findings-known -- --findings-dir findings/cases --known-dir ../css-parser-fuzzer-cases/cases
@@ -66,6 +68,8 @@ The fuzzer accepts only `--syntax css`. The parser adapter set is intentionally 
 `verify-lightning-roundtrip` is a metamorphic oracle for accepted lightningcss inputs. It generates a deterministic seed window, parses each case through the default adapters, takes lightningcss's transformed CSS when lightningcss accepted the input and changed the source, and reparses that transformed CSS with the same adapter set. A transformed output that creates a parser-status disagreement fails the command unless it matches `--known-dir`; this catches cases where a parser accepts an input but emits CSS that the parser matrix cannot consistently parse. Pass `--out <dir>` to write each unknown transformed-output mismatch as replayable `.css` plus JSON report metadata that also preserves the original trigger case and original parser results. The same output directory also gets `roundtrip-summary.json` with run metadata, counts, and written finding paths, including zero-mismatch or fully known runs. Add `--minimize` to reduce the emitted CSS before writing; minimization preserves the transformed-output parser fingerprint and records the reducer attempts in JSON.
 
 `verify-prettier-roundtrip` is the equivalent metamorphic oracle for Prettier's CSS formatter. It only checks inputs that the full parser matrix already accepts, then formats them with Prettier and reparses the formatted CSS through the same adapters, so existing parser disagreements do not get reported again as formatter-output issues. Pass `--out <dir>` to write each unknown formatted-output mismatch as replayable `.css` plus JSON report metadata that also preserves the original trigger case and original parser results. The same output directory also gets `roundtrip-summary.json` with run metadata, counts, and written finding paths, including zero-mismatch or fully known runs. If Prettier's parser accepts an input but the formatter crashes before producing CSS, the report writes the original trigger CSS and records `prettier-css=crashed` with the formatter error message. Add `--minimize` to reduce the formatted output or formatter-crash trigger before writing; minimization preserves the formatted-output parser fingerprint or formatter crash message and records the reducer attempts in JSON.
+
+`verify-report-ready` runs the report-ready gate set in sequence: `check`, `test`, `build`, OXC driver build, spec fetch and corpus verification, selected-spec generator coverage, minimized cases verification, a minimized 5000-iteration fuzz campaign, lightningcss and Prettier roundtrip oracles, and archive coverage checks for every output directory. By default it reads cases from `../css-parser-fuzzer-cases/cases`, writes fresh ignored output under `findings/report-ready-<timestamp>/`, and fails at the first failing command. Pass `--cases-dir`, `--cases-readme`, `--out-root`, `--seed`, `--iterations`, `--roundtrip-count`, `--timeout-ms`, or `--skip-fetch-specs` when replaying a specific local run.
 
 `verify-findings-known` closes the campaign-to-cases loop. It reads finding `.json` reports from `--findings-dir`, skips `campaign-summary.json` and `roundtrip-summary.json`, replays each report's CSS with the current parser adapters, and checks each current source/result matrix against the cases repo loaded from `--known-dir`. It uses the same exact-source fingerprints and narrow issue-family matching as fuzz campaigns, so it fails when a campaign produced current parser disagreements that have not yet been promoted into the companion cases repository. Reports that no longer reproduce an interesting disagreement are listed as stale instead of blocking the gate. Minimized finding reports are replayed from their minimized source.
 

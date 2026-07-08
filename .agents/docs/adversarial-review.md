@@ -34,19 +34,10 @@ This record captures the adversarial checks that matter before treating `css-fuz
 Run this set before claiming a report-ready cases repository:
 
 ```sh
-vp check
-vp test
-vp build
-vp run build:oxc-driver
-vp run fetch-specs -- --download
-vp run verify-spec-corpus
-vp run verify-generator-coverage -- --require-selected-specs
-vp run verify-cases -- --dir ../css-parser-fuzzer-cases/cases --readme ../css-parser-fuzzer-cases/README.md --timeout-ms 1500 --check-minimized --minimize-attempts 80
-vp run fuzz -- --seed 238000 --iterations 5000 --known-dir ../css-parser-fuzzer-cases/cases --out findings/campaign-238000-readme-context-integrated --minimize --timeout-ms 1500
-vp run verify-findings-known -- --findings-dir findings/campaign-238000-readme-context-integrated --known-dir ../css-parser-fuzzer-cases/cases --timeout-ms 1500
+vp run verify-report-ready
 ```
 
-Use fresh output directories for campaign and roundtrip commands. A zero-finding campaign is still evidence only when its summary is written and `verify-findings-known` passes.
+`verify-report-ready` expands to the full gate set: `check`, `test`, `build`, OXC driver build, live spec fetch, spec corpus verification, selected-spec generator coverage, minimized cases verification, one minimized fuzz campaign, lightningcss and Prettier roundtrip oracles, and `verify-findings-known` for every output directory. It writes fresh ignored output under `findings/report-ready-<timestamp>/` by default. A zero-finding campaign is still evidence only when its summary is written and `verify-findings-known` passes.
 
 ## Residual Risks
 

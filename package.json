@@ -20,6 +20,7 @@
     "verify-findings-known": "vp exec tsx src/cli.ts verify-findings-known",
     "verify-lightning-roundtrip": "vp exec tsx src/cli.ts verify-lightning-roundtrip",
     "verify-prettier-roundtrip": "vp exec tsx src/cli.ts verify-prettier-roundtrip",
+    "verify-report-ready": "vp exec tsx scripts/verifyReportReady.ts",
     "bench-adapters": "vp exec tsx src/cli.ts bench-adapters",
     "replay": "vp exec tsx src/cli.ts replay",
     "verify-cases": "vp exec tsx src/cli.ts verify-cases",
