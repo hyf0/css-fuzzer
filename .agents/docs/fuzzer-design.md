@@ -2,6 +2,8 @@
 
 This project uses differential fuzzing as the first oracle because the CSS language has broad recovery behavior and no single JavaScript parser can be treated as the complete truth for all current CSS drafts.
 
+The adversarial review checklist for report-quality evidence lives in [adversarial-review.md](./adversarial-review.md). Update it whenever a change adds or removes a gate that protects against false parser evidence, stale spec coverage, minimizer drift, or case repository drift.
+
 The core generator is deterministic by seed. A failing seed must be replayable with the same TypeScript code, dependency versions, parser versions, syntax mode, and downloaded spec corpus revision.
 
 Downloaded spec examples are both direct seeds and mutation seeds. The generator can pair them with generated rules or wrap nest-safe examples in `@layer`, `@media`, or `@supports`; top-level-only at-rules such as `@charset`, `@import`, and `@namespace` are not nested.
